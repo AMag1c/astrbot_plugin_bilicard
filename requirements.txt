@@ -1,0 +1,6 @@
+# B站接口异步请求（AstrBot 环境通常已自带）
+aiohttp>=3.8
+# 扫码登录生成二维码图片
+qrcode[pil]>=7.0
+# UP主投稿/信息：自动处理 buvid 激活、wbi 等风控
+bilibili-api-python>=17.0

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1328">
+<style>
+  /* B站官方图标字体（vanfont），运行时 base64 内嵌 */
+  @font-face {
+    font-family: 'vanfont';
+    src: url("data:font/woff;base64,{{ vanfont_b64 }}") format('woff');
+    font-weight: normal;
+    font-style: normal;
+  }
+  .bicon {
+    font-family: 'vanfont';
+    font-style: normal;
+    font-weight: normal;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1;
+    display: inline-block;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: #ebedf0; }
+  body {
+    zoom: 2;                 /* 2 倍渲染，提升清晰度 */
+    padding: 12px; background: #ebedf0;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: #18191c;
+  }
+
+  /* 卡片：圆角 + 阴影，四周由 body 的浅灰留白形成边缘，像一张截图卡片 */
+  .card {
+    width: 100%; background: #fff; overflow: hidden;
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.10);
+  }
+
+  /* 顶部投稿气泡条（B站粉渐变） */
+  .post-bar {
+    background: linear-gradient(135deg, #ff9cb5 0%, #fb7299 100%);
+    color: #fff; text-align: center;
+    font-size: 21px; font-weight: 600;
+    padding: 13px 16px; letter-spacing: .5px;
+  }
+
+  /* 封面 */
+  .cover-wrap { position: relative; width: 100%; line-height: 0; background: #d8dde3; }
+  .cover-wrap img { width: 100%; display: block; object-fit: cover; }
+  .duration {
+    position: absolute; right: 12px; bottom: 12px;
+    background: rgba(0,0,0,.65); color: #fff;
+    font-size: 17px; font-weight: 600;
+    padding: 3px 9px; border-radius: 6px; line-height: 1.4;
+  }
+
+  /* UP 主行 */
+  .uploader { display: flex; align-items: center; padding: 16px 20px 12px; }
+  .uploader .face {
+    width: 52px; height: 52px; border-radius: 50%;
+    object-fit: cover; background: #e3e5e7; flex-shrink: 0;
+  }
+  .uploader .up-name {
+    margin-left: 12px; font-size: 25px; font-weight: normal; color: #fb7299;
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .online {
+    flex-shrink: 0; margin-left: 10px;
+    background: #e7f7ee; color: #2ba471;
+    font-size: 16px; font-weight: 500;
+    padding: 5px 12px; border-radius: 14px;
+  }
+
+  /* UP主与标题之间的分割线 */
+  .divider { height: 1px; background: #eceef0; margin: 8px 20px 0; }
+
+  /* 正文 */
+  .body { padding: 16px 20px 0; }
+  .title { font-size: 27px; font-weight: 700; line-height: 1.45; color: #18191c; margin-bottom: 12px; }
+  .meta {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 20px; color: #9499a0; margin-bottom: 14px;
+  }
+  .meta .bvid { font-family: Consolas, Menlo, monospace; }
+  .desc {
+    font-size: 22px; color: #61666d; line-height: 1.7;
+    margin-bottom: 18px; word-break: break-word;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  }
+
+  /* 统计行 */
+  .stats { display: flex; justify-content: space-between; padding: 18px 6px; border-top: 1px solid #eceef0; }
+  .stat { display: flex; flex-direction: column; align-items: center; flex: 1; }
+  .stat .bicon { font-size: 32px; color: #fb7299; margin-bottom: 6px; }
+  .stat .num { font-size: 19px; font-weight: normal; color: #61666d; line-height: 1.2; }
+  .stat .lbl { font-size: 19px; color: #61666d; margin-top: 3px; }
+
+  /* 热门评论 */
+  .comments { border-top: 1px solid #eceef0; padding: 16px 0 4px; }
+  .comments .sec-title { font-size: 20px; font-weight: 700; color: #18191c; margin-bottom: 12px; }
+  .comment { display: flex; align-items: flex-start; margin-bottom: 12px; }
+  .comment .c-name {
+    flex-shrink: 0; font-size: 15.5px; color: #fb7299; font-weight: 500;
+    max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .comment .c-name::after { content: "："; }
+  .comment .c-msg {
+    flex: 1; font-size: 15.5px; color: #61666d; line-height: 1.55; word-break: break-word;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  }
+  .comment .c-like {
+    flex-shrink: 0; margin-left: 10px; font-size: 12px; color: #9499a0;
+    white-space: nowrap; display: flex; align-items: center;
+  }
+  .comment .c-like .bicon { font-size: 13px; color: #9499a0; margin-right: 3px; }
+
+  /* AI 总结 */
+  .ai-summary { margin: 14px 0 4px; background: #eef4ff; border: 1px solid #d6e4ff; border-radius: 12px; padding: 14px 16px; }
+  .ai-summary .ai-title { display: flex; align-items: center; font-size: 22px; font-weight: 700; color: #3370ff; margin-bottom: 10px; }
+  .ai-summary .ai-title .robot { font-size: 24px; margin-right: 6px; }
+  .ai-summary .ai-text { font-size: 20.5px; color: #41464b; line-height: 1.75; word-break: break-word; }
+
+  /* 底部 logo（B站官方 logo 字形，非斜体） */
+  .footer { text-align: center; padding: 16px 0 20px; }
+  .footer .logo { font-size: 34px; color: #fb7299; }
+</style>
+</head>
+<body>
+<div class="card">
+
+  {# 顶部投稿气泡（仅订阅推送场景显示） #}
+  {% if show_post_bar %}<div class="post-bar">{{ up_name }} 投稿了新视频 🎬</div>{% endif %}
+
+  {# 封面 + 时长 #}
+  <div class="cover-wrap">
+    <img src="{{ cover }}" alt="cover">
+    {% if duration_text %}<div class="duration">{{ duration_text }}</div>{% endif %}
+  </div>
+
+  {# UP 主 + 在线人数 #}
+  <div class="uploader">
+    <img class="face" src="{{ up_face }}" alt="face">
+    <div class="up-name">{{ up_name }}</div>
+    {% if online_text %}<div class="online">{{ online_text }}</div>{% endif %}
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="body">
+    <div class="title">{{ title }}</div>
+    <div class="meta">
+      <span>发布于：{{ pubdate_text }}</span>
+      {% if bvid %}<span class="bvid">{{ bvid }}</span>{% endif %}
+    </div>
+    {% if desc %}<div class="desc">{{ desc }}</div>{% endif %}
+
+    {# 统计数据（B站官方 vanfont 图标）：播放/弹幕/点赞/投币/收藏/分享/评论 #}
+    <div class="stats">
+      {% for s in stats %}
+      <div class="stat">
+        <span class="bicon">{{ s.icon }}</span>
+        <span class="num">{{ s.value }}</span>
+        <span class="lbl">{{ s.label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    {# 热门评论 #}
+    {% if comments %}
+    <div class="comments">
+      <div class="sec-title">热门评论</div>
+      {% for c in comments %}
+      <div class="comment">
+        <span class="c-name">{{ c.name }}</span>
+        <span class="c-msg">{{ c.message }}</span>
+        <span class="c-like"><span class="bicon">{{ like_icon }}</span>{{ c.like }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# AI 视频总结 #}
+    {% if summary %}
+    <div class="ai-summary">
+      <div class="ai-title"><span class="robot">🤖</span>AI 视频总结</div>
+      <div class="ai-text">{{ summary }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="footer"><span class="logo bicon">{{ logo_icon }}</span></div>
+
+</div>
+</body>
+</html>

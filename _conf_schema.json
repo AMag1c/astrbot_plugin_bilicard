@@ -1,0 +1,120 @@
+{
+  "trigger_mode": {
+    "description": "触发范围",
+    "type": "string",
+    "default": "all",
+    "options": ["all", "group_only", "private_only"],
+    "hint": "all=群聊和私聊都响应 / group_only=仅群聊 / private_only=仅私聊"
+  },
+  "enable_comments": {
+    "description": "显示热门评论",
+    "type": "bool",
+    "default": true,
+    "hint": "在卡片中显示热门评论（匿名即可获取，无需登录）"
+  },
+  "comment_count": {
+    "description": "热门评论数量",
+    "type": "int",
+    "default": 3,
+    "min": 1,
+    "max": 6,
+    "hint": "卡片中显示的热门评论条数"
+  },
+  "enable_ai_summary": {
+    "description": "启用 AI 视频总结",
+    "type": "bool",
+    "default": true,
+    "hint": "提取视频字幕并用 LLM 生成总结。需配置下方 LLM 与 B站Cookie，且视频本身要有字幕"
+  },
+  "llm_provider_id": {
+    "description": "AI 总结使用的模型",
+    "type": "string",
+    "default": "",
+    "_special": "select_provider",
+    "hint": "留空则使用 AstrBot 当前默认模型。仅在启用 AI 总结时需要"
+  },
+  "summary_max_subtitle": {
+    "description": "字幕最大长度",
+    "type": "int",
+    "default": 4000,
+    "min": 1000,
+    "max": 20000,
+    "hint": "送入 LLM 的字幕最大字符数，过长会截断以控制 token 消耗"
+  },
+  "summary_max_chars": {
+    "description": "AI 总结字数上限",
+    "type": "int",
+    "default": 120,
+    "min": 0,
+    "max": 1000,
+    "hint": "限制 AI 总结生成的字数（卡片中 AI 总结区一行约 27 字）。填 0 表示不限制字数。"
+  },
+  "show_link": {
+    "description": "图片后附带视频链接",
+    "type": "bool",
+    "default": true,
+    "hint": "在卡片图片之后追加一条视频跳转链接文本"
+  },
+  "bilibili_cookie": {
+    "description": "B站 Cookie（AI总结字幕需要）",
+    "type": "object",
+    "items": {
+      "sessdata": {
+        "description": "SESSDATA",
+        "type": "string",
+        "default": "",
+        "hint": "登录 B站后从浏览器 Cookie 中复制 SESSDATA 的值"
+      },
+      "bili_jct": {
+        "description": "bili_jct",
+        "type": "string",
+        "default": "",
+        "hint": "登录 B站后从浏览器 Cookie 中复制 bili_jct 的值"
+      }
+    }
+  },
+  "access_mode": {
+    "description": "会话访问控制",
+    "type": "string",
+    "default": "all",
+    "options": ["all", "blacklist", "whitelist"],
+    "hint": "all=所有会话可用 / blacklist=名单内禁用 / whitelist=仅名单内可用"
+  },
+  "session_list": {
+    "description": "会话白/黑名单",
+    "type": "list",
+    "items": {"type": "string"},
+    "default": [],
+    "hint": "每项填一个会话标识 UMO（推荐，跨平台精确，形如 aiocqhttp:GroupMessage:123456），也兼容纯群号 123456。在目标会话发 /会话标识 或 /sid 可获取其 UMO。点下方按钮可逐条添加。"
+  },
+  "cooldown_seconds": {
+    "description": "同视频冷却（秒）",
+    "type": "int",
+    "default": 60,
+    "min": 0,
+    "max": 3600,
+    "hint": "同一视频在该时间内重复出现则不再解析，防止刷屏。0 表示不限制"
+  },
+  "enable_subscribe_push": {
+    "description": "启用订阅推送",
+    "type": "bool",
+    "default": true,
+    "hint": "订阅推送总开关：开启后定时检查订阅的 UP主并推送新投稿；关闭则暂停推送（订阅数据保留，重新开启即恢复）。"
+  },
+  "check_interval_minutes": {
+    "description": "订阅检查间隔（分钟）",
+    "type": "int",
+    "default": 10,
+    "min": 2,
+    "max": 1440,
+    "hint": "多久轮询一次订阅的 UP主是否有新投稿（订阅功能需要登录 B站）"
+  },
+  "subscriptions": {
+    "description": "订阅数据（哪个会话订阅了哪些UP主）",
+    "type": "text",
+    "default": "{\n  \"aiocqhttp:GroupMessage:123456789\": [\n    {\"mid\": \"0\", \"name\": \"示例-请删除或替换为真实UP主\", \"last_bvid\": \"\"}\n  ]\n}",
+    "editor_mode": true,
+    "editor_language": "json",
+    "hint": "通常用 /订阅 UID 指令自动维护，也可在此直接编辑（改完需重载插件生效）。上方为格式示例：键是会话标识（用 /sid 指令获取，形如 aiocqhttp:GroupMessage:群号），值是该会话订阅的 UP主列表（mid=UP主UID，name=备注，last_bvid 留空即可）。mid 为 0 的示例项会被自动忽略，请替换为真实 UID 或删除。"
+  }
+}

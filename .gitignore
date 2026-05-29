@@ -1,0 +1,27 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 打包产物
+*.zip
+
+# 本地预览 / 开发临时产物（dev/preview.py 生成）
+preview*.html
+icons_preview.html
+
+# 运行时生成的数据（扫码登录凭证 / 订阅状态 / 登录二维码）
+credential.json
+subscriptions.json
+qrcode_login.png
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+
+# 系统
+.DS_Store
+Thumbs.db
