@@ -5,15 +5,13 @@
 
 import asyncio
 import base64
-import logging
 import re
 from typing import List, Optional, Tuple
 
 import aiohttp
 
 from . import wbi
-
-logger = logging.getLogger(__name__)
+from .log import logger
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -50,7 +48,9 @@ class BiliClient:
     ) -> Optional[dict]:
         try:
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.get(url, params=params, headers=self._headers(referer)) as resp:
+                async with session.get(
+                    url, params=params, headers=self._headers(referer)
+                ) as resp:
                     if resp.status != 200:
                         logger.warning("请求 %s 返回 HTTP %s", url, resp.status)
                         return None
@@ -123,7 +123,7 @@ class BiliClient:
             "cover": d.get("pic", ""),
             "desc": d.get("desc", "") or "",
             "duration": d.get("duration", 0),  # 秒
-            "pubdate": d.get("pubdate", 0),     # unix 时间戳
+            "pubdate": d.get("pubdate", 0),  # unix 时间戳
             "owner": {
                 "name": owner.get("name", ""),
                 "mid": owner.get("mid", 0),
@@ -161,12 +161,14 @@ class BiliClient:
         for r in source[:count]:
             member = r.get("member", {}) or {}
             content = r.get("content", {}) or {}
-            result.append({
-                "name": member.get("uname", ""),
-                "avatar": member.get("avatar", ""),
-                "message": (content.get("message", "") or "").strip(),
-                "like": r.get("like", 0),
-            })
+            result.append(
+                {
+                    "name": member.get("uname", ""),
+                    "avatar": member.get("avatar", ""),
+                    "message": (content.get("message", "") or "").strip(),
+                    "like": r.get("like", 0),
+                }
+            )
         return result
 
     async def get_subtitle_text(
@@ -174,11 +176,11 @@ class BiliClient:
     ) -> Optional[str]:
         """获取视频字幕纯文本。先用自有 wbi 实现，拿不到再回退 bilibili-api 库。"""
         if not self.cookies.get("SESSDATA"):
-            logger.info("未配置 SESSDATA，跳过字幕获取")
+            logger.debug("未配置 SESSDATA，跳过字幕获取")
             return None
         subtitles = await self._subtitle_list_wbi(bvid, cid)
         if not subtitles:
-            logger.info("wbi 未取到字幕，回退 bilibili-api 库")
+            logger.debug("wbi 未取到字幕，回退 bilibili-api 库")
             subtitles = await self._subtitle_list_lib(bvid, cid)
         if not subtitles:
             return None
@@ -192,7 +194,9 @@ class BiliClient:
             data = await self._get_json(API_SUBTITLE, params)
             if not data or data.get("code") != 0:
                 return []
-            return ((data.get("data") or {}).get("subtitle") or {}).get("subtitles") or []
+            return ((data.get("data") or {}).get("subtitle") or {}).get(
+                "subtitles"
+            ) or []
         except Exception as e:  # noqa: BLE001
             logger.warning("wbi 字幕列表获取失败: %s", e)
             return []

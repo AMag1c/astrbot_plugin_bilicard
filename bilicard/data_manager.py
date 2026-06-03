@@ -5,13 +5,15 @@
 """
 
 import json
-from typing import Callable, Dict, Iterator, List, Tuple
+from typing import Dict, Iterator, List, Tuple
+
+from .config import Config
 
 
 class SubscriptionStore:
-    def __init__(self, config, save_func: Callable[[], None]):
-        self.config = config
-        self._save_func = save_func
+    def __init__(self, cfg: Config):
+        self.config = cfg.raw
+        self._save_func = cfg.save
         self._subs: Dict[str, List[dict]] = self._load_from_config()
 
     def _load_from_config(self) -> Dict[str, List[dict]]:
@@ -26,7 +28,9 @@ class SubscriptionStore:
 
     def _persist(self) -> None:
         try:
-            self.config["subscriptions"] = json.dumps(self._subs, ensure_ascii=False, indent=2)
+            self.config["subscriptions"] = json.dumps(
+                self._subs, ensure_ascii=False, indent=2
+            )
         except Exception:
             pass
         try:

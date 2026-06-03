@@ -1,12 +1,11 @@
 """B站扫码登录：申请二维码 -> 轮询扫码状态 -> 从成功回调的 url 解析出 Cookie。"""
 
-import logging
 from typing import Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 import aiohttp
 
-logger = logging.getLogger(__name__)
+from .log import logger
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -17,8 +16,8 @@ QRCODE_GEN = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate
 QRCODE_POLL = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
 
 # poll 返回的状态码含义
-CODE_SUCCESS = 0       # 登录成功
-CODE_EXPIRED = 86038   # 二维码已失效
+CODE_SUCCESS = 0  # 登录成功
+CODE_EXPIRED = 86038  # 二维码已失效
 
 
 def _headers() -> dict:

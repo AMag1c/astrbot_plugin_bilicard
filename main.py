@@ -7,6 +7,8 @@
 
 import asyncio
 import json
+import os
+import re
 import time
 from typing import Dict, Optional
 
@@ -17,22 +19,32 @@ from astrbot.api.star import Context, Star, StarTools, register
 
 from .bilicard import login, parser, render, summarizer
 from .bilicard.client import BiliClient
+from .bilicard.config import Config
+from .bilicard.credential import CredentialStore
 from .bilicard.data_manager import SubscriptionStore
 
 
+def _is_http_url(s) -> bool:
+    """html_render 返回值是否为可直接发图的 http(s) URL。"""
+    return isinstance(s, str) and s.startswith(("http://", "https://"))
+
+
+# 元数据以 metadata.yaml 为唯一来源；此处保持与其一致，避免两份漂移。
 @register(
     "astrbot_plugin_bilicard",
     "AMag1c",
-    "自动识别群内 B站视频并渲染成精美信息卡片（统计/在线人数/热门评论/AI总结）",
-    "v0.1.0",
+    "自动识别群聊/私聊中的 B站视频链接、BV号、b23 短链，渲染成精美信息卡片"
+    "（封面、UP主、播放/弹幕/点赞等统计、实时在线人数、热门评论、AI视频总结），并附上视频链接。",
+    "0.1.1",
     "https://github.com/AMag1c/astrbot_plugin_bilicard",
 )
 class BiliCard(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config or {}
+        self.cfg = Config(self.config)  # 配置统一入口（默认值集中、避免漂移）
 
-        cookie = self.config.get("bilibili_cookie", {}) or {}
+        cookie = self.cfg.get("bilibili_cookie", {}) or {}
         self.cookies = {
             "SESSDATA": cookie.get("sessdata", ""),
             "bili_jct": cookie.get("bili_jct", ""),
@@ -44,31 +56,24 @@ class BiliCard(Star):
 
         try:
             data_dir = StarTools.get_data_dir("astrbot_plugin_bilicard")
-        except Exception:
-            import os
+        except Exception:  # noqa: BLE001
             data_dir = os.path.dirname(os.path.abspath(__file__))
         self._data_dir = str(data_dir)
-        self.store = SubscriptionStore(self.config, self._save_config)
+        self.cred = CredentialStore(self._data_dir)
+        self.store = SubscriptionStore(self.cfg)
 
         # 加载扫码登录持久化的 Cookie（优先于手填配置）
-        cred = self._load_credential()
-        if cred.get("SESSDATA"):
-            self.cookies["SESSDATA"] = cred["SESSDATA"]
-            self.cookies["bili_jct"] = cred.get("bili_jct", "")
+        saved = self.cred.load()
+        if saved.get("SESSDATA"):
+            self.cookies["SESSDATA"] = saved["SESSDATA"]
+            self.cookies["bili_jct"] = saved.get("bili_jct", "")
             self.client = BiliClient(self.cookies)
 
     # ------------------------------------------------------------------ #
     # 配置便捷读取
     # ------------------------------------------------------------------ #
     def _c(self, key, default=None):
-        return self.config.get(key, default)
-
-    def _save_config(self) -> None:
-        """把当前配置写回 data/config/<plugin>_config.json，供后台查看/编辑。"""
-        try:
-            self.config.save_config()
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"[BiliCard] 保存配置失败: {e}")
+        return self.cfg.get(key, default)
 
     # ------------------------------------------------------------------ #
     # 全量消息监听：自动识别并解析
@@ -90,34 +95,7 @@ class BiliCard(Star):
         if not self._session_allowed(event):
             return
 
-        # 收集可能含视频标识的文本：纯文本 + 原始消息 + 消息组件（小程序卡片在 Json 组件 data 里）。
-        # 引用/回复消息只扫用户本次输入，避免被引用内容里的旧链接被反复识别、重复出卡片。
-        parts = [text]
-        try:
-            msg_obj = getattr(event, "message_obj", None)
-            if msg_obj is not None:
-                comps = getattr(msg_obj, "message", None) or []
-                is_reply = any(
-                    (getattr(c, "type", "") or "").lower() == "reply"
-                    or "reply" in type(c).__name__.lower()
-                    for c in comps
-                )
-                if not is_reply:
-                    parts.append(str(getattr(msg_obj, "raw_message", "") or ""))
-                    for comp in comps:
-                        data = getattr(comp, "data", None)
-                        if isinstance(data, dict):
-                            try:
-                                parts.append(json.dumps(data, ensure_ascii=False))
-                            except Exception:
-                                parts.append(str(data))
-                        elif data:
-                            parts.append(str(data))
-        except Exception:
-            pass
-        # 合并并去掉 JSON 转义斜杠（\/ -> /），便于匹配 b23 短链
-        combined = " ".join(parts).replace("\\/", "/")
-        token = parser.find_video_token(combined)
+        token = parser.find_video_token(self._collect_candidate_text(event, text))
         if not token:
             return
 
@@ -141,8 +119,25 @@ class BiliCard(Star):
             summary = None
             if self._c("enable_ai_summary", True):
                 summary = await self._build_summary(event, info)
-            img_url = await self._render_card(info, summary=summary, show_post_bar=False)
-            # 图片 + 链接合并为一条消息发送，避免多次 yield 被其他插件中断传播
+            img_url = await self._render_card(
+                info, summary=summary, show_post_bar=False
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.error(
+                "[BiliCard] 渲染失败 bvid=%s: %s", info.get("bvid"), e, exc_info=True
+            )
+            return
+
+        if not _is_http_url(img_url):
+            logger.error(
+                "[BiliCard] 渲染图片 URL 无效，跳过: bvid=%s url=%r",
+                info.get("bvid"),
+                img_url,
+            )
+            return
+
+        try:
+            # 图片 + 链接合并为一条消息，避免多次 yield 被其他插件中断传播
             chain = [Comp.Image.fromURL(img_url)]
             if self._c("show_link", True):
                 chain.append(
@@ -150,11 +145,44 @@ class BiliCard(Star):
                 )
             yield event.chain_result(chain)
         except Exception as e:  # noqa: BLE001
-            logger.error(f"[BiliCard] 渲染或发送失败: {e}")
+            logger.error(
+                "[BiliCard] 发送失败 bvid=%s: %s", info.get("bvid"), e, exc_info=True
+            )
 
     # ------------------------------------------------------------------ #
     # 内部逻辑
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _collect_candidate_text(event: AstrMessageEvent, text: str) -> str:
+        """汇集本条消息中可能含视频标识的文本：正文 + 原始消息 + 组件 data
+        （小程序卡片在 Json 组件 data 里）。引用/回复消息只取用户本次输入，避免被
+        引用内容里的旧链接反复触发。返回去掉 JSON 转义斜杠（\\/ → /）的合并串。
+        """
+        parts = [text]
+        try:
+            msg_obj = getattr(event, "message_obj", None)
+            if msg_obj is not None:
+                comps = getattr(msg_obj, "message", None) or []
+                is_reply = any(
+                    (getattr(c, "type", "") or "").lower() == "reply"
+                    or "reply" in type(c).__name__.lower()
+                    for c in comps
+                )
+                if not is_reply:
+                    parts.append(str(getattr(msg_obj, "raw_message", "") or ""))
+                    for comp in comps:
+                        data = getattr(comp, "data", None)
+                        if isinstance(data, dict):
+                            try:
+                                parts.append(json.dumps(data, ensure_ascii=False))
+                            except Exception:  # noqa: BLE001
+                                parts.append(str(data))
+                        elif data:
+                            parts.append(str(data))
+        except Exception:  # noqa: BLE001
+            pass
+        return " ".join(parts).replace("\\/", "/")
+
     async def _resolve_token(self, token):
         kind, value = token
         if kind == "b23":
@@ -202,19 +230,26 @@ class BiliCard(Star):
         )
 
         data = render.build_template_data(
-            info, online_text=online_text, comments=comments,
-            summary=summary, show_post_bar=show_post_bar,
+            info,
+            online_text=online_text,
+            comments=comments,
+            summary=summary,
+            show_post_bar=show_post_bar,
         )
         # PNG 无损 + 设备像素缩放，尽量保证清晰度
         options = {"type": "png", "full_page": True, "scale": "device"}
-        return await self.html_render(self._tmpl, data, options=options)
+        url = await self.html_render(self._tmpl, data, options=options)
+        # t2i 返回的 URL 可能带前后空格（如 t2i_endpoint 配置粘贴时多了空格），去掉以防 fromURL 误判
+        return url.strip() if isinstance(url, str) else url
 
     async def _build_online(self, info: dict) -> Optional[str]:
         # 固定使用 B站视频实时在线观看人数（真实数据）
         total = await self.client.get_online(info["bvid"], info["cid"])
         return f"{total} 人在线" if total is not None else None
 
-    async def _build_summary(self, event: AstrMessageEvent, info: dict) -> Optional[str]:
+    async def _build_summary(
+        self, event: AstrMessageEvent, info: dict
+    ) -> Optional[str]:
         text = await self.client.get_subtitle_text(
             info["bvid"], info["cid"], int(self._c("summary_max_subtitle", 4000))
         )
@@ -235,7 +270,9 @@ class BiliCard(Star):
             return getattr(resp, "completion_text", "") or ""
 
         return await summarizer.summarize(
-            info["title"], text, llm_ask,
+            info["title"],
+            text,
+            llm_ask,
             max_chars=int(self._c("summary_max_chars", 120)),
         )
 
@@ -263,17 +300,16 @@ class BiliCard(Star):
     # ------------------------------------------------------------------ #
     @staticmethod
     def _extract_uid(text: str) -> str:
-        import re
         m = re.search(r"\d{3,}", text or "")
         return m.group(0) if m else ""
 
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("订阅")
+    @filter.command("订阅UP")
     async def sub_cmd(self, event: AstrMessageEvent):
-        """/订阅 UID —— 订阅 UP主新投稿。"""
+        """/订阅UP UID —— 订阅 UP主新投稿。"""
         uid = self._extract_uid(event.message_str)
         if not uid:
-            yield event.plain_result("用法：/订阅 UP主UID（例如 /订阅 486906719）")
+            yield event.plain_result("用法：/订阅UP UP主UID（例如 /订阅UP 486906719）")
             return
         info = await self.client.get_up_info(uid)
         # 以当前最新视频为基线，避免订阅瞬间把已有视频当作"新投稿"推送
@@ -301,23 +337,23 @@ class BiliCard(Star):
             yield event.plain_result(f"该 UP主已在订阅列表中：{info['name']}")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("取消订阅")
+    @filter.command("取消订阅UP")
     async def unsub_cmd(self, event: AstrMessageEvent):
-        """/取消订阅 UID —— 取消订阅。"""
+        """/取消订阅UP UID —— 取消订阅。"""
         uid = self._extract_uid(event.message_str)
         if not uid:
-            yield event.plain_result("用法：/取消订阅 UP主UID")
+            yield event.plain_result("用法：/取消订阅UP UP主UID")
             return
         ok = self.store.remove(event.unified_msg_origin, uid)
         yield event.plain_result("✅ 已取消订阅" if ok else "未找到该订阅")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("订阅列表")
+    @filter.command("订阅UP列表")
     async def sublist_cmd(self, event: AstrMessageEvent):
-        """/订阅列表 —— 查看本会话订阅。"""
+        """/订阅UP列表 —— 查看本会话订阅。"""
         subs = self.store.list(event.unified_msg_origin)
         if not subs:
-            yield event.plain_result("当前没有订阅。用 /订阅 UID 添加。")
+            yield event.plain_result("当前没有订阅。用 /订阅UP UID 添加。")
             return
         lines = ["📋 当前订阅列表："]
         for s in subs:
@@ -327,48 +363,16 @@ class BiliCard(Star):
     # ------------------------------------------------------------------ #
     # B站登录（扫码 / Cookie 持久化）
     # ------------------------------------------------------------------ #
-    def _credential_path(self) -> str:
-        import os
-        return os.path.join(self._data_dir, "credential.json")
-
-    def _load_credential(self) -> dict:
-        import json
-        import os
-        try:
-            p = self._credential_path()
-            if os.path.exists(p):
-                with open(p, encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return {}
-
-    def _save_credential(self) -> None:
-        import json
-        try:
-            with open(self._credential_path(), "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "SESSDATA": self.cookies.get("SESSDATA", ""),
-                        "bili_jct": self.cookies.get("bili_jct", ""),
-                    },
-                    f,
-                    ensure_ascii=False,
-                )
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"[BiliCard] 保存凭证失败: {e}")
-
     def _apply_cookies(self, cookies: dict) -> None:
         self.cookies["SESSDATA"] = cookies.get("SESSDATA", "")
         self.cookies["bili_jct"] = cookies.get("bili_jct", "")
         self.client = BiliClient(self.cookies)
-        self._save_credential()
+        self.cred.save(self.cookies["SESSDATA"], self.cookies["bili_jct"])
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("B站登录")
     async def login_cmd(self, event: AstrMessageEvent):
         """/B站登录 —— 扫码登录 B站。"""
-        import os
         res = await login.generate_qrcode()
         if not res:
             yield event.plain_result("二维码申请失败，请稍后重试。")
@@ -392,7 +396,9 @@ class BiliCard(Star):
                 self._apply_cookies(cookies)
                 await self.context.send_message(
                     umo,
-                    MessageChain().message("✅ B站登录成功！订阅与 AI 总结功能已可用。"),
+                    MessageChain().message(
+                        "✅ B站登录成功！订阅与 AI 总结功能已可用。"
+                    ),
                 )
                 return
             if code == login.CODE_EXPIRED:
@@ -411,7 +417,7 @@ class BiliCard(Star):
         self.cookies["SESSDATA"] = ""
         self.cookies["bili_jct"] = ""
         self.client = BiliClient(self.cookies)
-        self._save_credential()
+        self.cred.save("", "")
         yield event.plain_result("已登出 B站，已清除登录信息。")
 
     # ------------------------------------------------------------------ #
@@ -464,15 +470,24 @@ class BiliCard(Star):
             return
         try:
             img_url = await self._render_card(info, summary=None, show_post_bar=True)
+        except Exception as e:  # noqa: BLE001
+            logger.error("[BiliCard] 推送渲染失败 bvid=%s: %s", bvid, e, exc_info=True)
+            return
+        if not _is_http_url(img_url):
+            logger.error(
+                "[BiliCard] 推送图片 URL 无效，跳过: bvid=%s url=%r", bvid, img_url
+            )
+            return
+        try:
             chain = MessageChain(chain=[Comp.Image.fromURL(img_url)])
             if self._c("show_link", True):
                 chain.chain.append(
                     Comp.Plain(f"\nhttps://www.bilibili.com/video/{info['bvid']}")
                 )
             await self.context.send_message(umo, chain)
-            logger.info(f"[BiliCard] 已推送新投稿 {bvid} 到 {umo}")
+            logger.info("[BiliCard] 已推送新投稿 %s 到 %s", bvid, umo)
         except Exception as e:  # noqa: BLE001
-            logger.error(f"[BiliCard] 推送新投稿失败: {e}")
+            logger.error("[BiliCard] 推送发送失败 bvid=%s: %s", bvid, e, exc_info=True)
 
     async def terminate(self):
         task = getattr(self, "_poll_task", None)

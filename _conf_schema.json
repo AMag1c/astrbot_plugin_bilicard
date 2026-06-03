@@ -85,7 +85,7 @@
     "type": "list",
     "items": {"type": "string"},
     "default": [],
-    "hint": "每项填一个会话标识 UMO（推荐，跨平台精确，形如 aiocqhttp:GroupMessage:123456），也兼容纯群号 123456。在目标会话发 /会话标识 或 /sid 可获取其 UMO。点下方按钮可逐条添加。"
+    "hint": "每项填一个会话标识 UMO（推荐，跨平台精确，形如 aiocqhttp:GroupMessage:123456），也兼容纯群号 123456。在目标会话发 /sid 可获取其 UMO。点下方按钮可逐条添加。"
   },
   "cooldown_seconds": {
     "description": "同视频冷却（秒）",
@@ -115,6 +115,6 @@
     "default": "{\n  \"aiocqhttp:GroupMessage:123456789\": [\n    {\"mid\": \"0\", \"name\": \"示例-请删除或替换为真实UP主\", \"last_bvid\": \"\"}\n  ]\n}",
     "editor_mode": true,
     "editor_language": "json",
-    "hint": "通常用 /订阅 UID 指令自动维护，也可在此直接编辑（改完需重载插件生效）。上方为格式示例：键是会话标识（用 /sid 指令获取，形如 aiocqhttp:GroupMessage:群号），值是该会话订阅的 UP主列表（mid=UP主UID，name=备注，last_bvid 留空即可）。mid 为 0 的示例项会被自动忽略，请替换为真实 UID 或删除。"
+    "hint": "通常用 /订阅UP UID 指令自动维护，也可在此直接编辑（改完需重载插件生效）。上方为格式示例：键是会话标识（用 /sid 指令获取，形如 aiocqhttp:GroupMessage:群号），值是该会话订阅的 UP主列表（mid=UP主UID，name=备注，last_bvid 留空即可）。mid 为 0 的示例项会被自动忽略，请替换为真实 UID 或删除。"
   }
 }

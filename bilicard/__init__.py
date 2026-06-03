@@ -8,4 +8,7 @@
 - render:       组装模板数据、加载 HTML 模板
 - data_manager: 订阅数据存储（基于配置项读写）
 - login:        B站扫码登录（二维码生成与轮询）
+- credential:   登录凭证持久化（credential.json，原子写）
+- config:       配置统一访问（默认值集中）
+- log:          日志适配（框架内走 astrbot logger，脱框架回退标准 logging）
 """

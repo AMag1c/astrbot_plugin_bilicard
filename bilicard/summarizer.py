@@ -4,10 +4,9 @@
 本模块只负责拼 Prompt 与做基本清洗。对应效果图底部的「AI 视频总结」区块。
 """
 
-import logging
 from typing import Awaitable, Callable, Optional
 
-logger = logging.getLogger(__name__)
+from .log import logger
 
 _PROMPT_TMPL = (
     "你是 B站视频内容总结助手。请根据下面的视频标题和字幕，"
@@ -29,7 +28,9 @@ async def summarize(
     if not subtitle_text:
         return None
     limit = f"{max_chars} 字以内，" if max_chars and max_chars > 0 else ""
-    prompt = _PROMPT_TMPL.format(limit=limit, title=title or "（无标题）", subtitle=subtitle_text)
+    prompt = _PROMPT_TMPL.format(
+        limit=limit, title=title or "（无标题）", subtitle=subtitle_text
+    )
     try:
         result = await llm_ask(prompt)
     except Exception as e:  # noqa: BLE001

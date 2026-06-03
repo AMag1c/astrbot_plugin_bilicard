@@ -7,22 +7,23 @@
 """
 
 import hashlib
-import logging
 import time
 import urllib.parse
 from typing import Optional, Tuple
 
 import aiohttp
 
-logger = logging.getLogger(__name__)
+from .log import logger
 
-# WBI 混淆表（B站固定）
+# WBI 混淆表（B站固定）。fmt: off 保留 16×4 网格，避免被展开成一项一行。
+# fmt: off
 MIXIN_KEY_ENC_TAB = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
     27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
     37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
     22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
 ]
+# fmt: on
 
 # mixin_key 缓存：(mixin_key, 获取时间)
 _wbi_cache: Optional[Tuple[str, float]] = None

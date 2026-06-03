@@ -12,10 +12,10 @@ PARENT = os.path.dirname(ROOT)
 PLUGIN = os.path.basename(ROOT)
 OUT = os.path.join(PARENT, PLUGIN + ".zip")
 
-EXCLUDE_DIRS = {"dev", "docs", "__pycache__", ".git", ".github", ".idea", ".vscode"}
+EXCLUDE_DIRS = {"dev", "docs", "__pycache__", ".ruff_cache", ".git", ".github", ".idea", ".vscode"}
 EXCLUDE_FILES = {"vanfont.ttf", ".gitignore"}
 EXCLUDE_EXT = {".pyc", ".zip"}
-EXCLUDE_PREFIX = ("preview", "icons_preview")
+EXCLUDE_PREFIX = ("preview", "icons_preview", "_localtest")
 
 if os.path.exists(OUT):
     os.remove(OUT)

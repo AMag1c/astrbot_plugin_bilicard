@@ -19,16 +19,16 @@ _vanfont_cache: Optional[str] = None
 
 # 统计项 -> vanfont 码点（B站官方图标字体 dashuchufang/bili_icon_pack）
 _STAT_ICON = {
-    "view": chr(0xE6E6),      # info_playnumber 播放
-    "danmaku": chr(0xE6E7),   # info_barragenumber 弹幕
-    "like": chr(0xE6E0),      # videodetails_like 点赞
-    "coin": chr(0xE6E4),      # videodetails_throw 投币
+    "view": chr(0xE6E6),  # info_playnumber 播放
+    "danmaku": chr(0xE6E7),  # info_barragenumber 弹幕
+    "like": chr(0xE6E0),  # videodetails_like 点赞
+    "coin": chr(0xE6E4),  # videodetails_throw 投币
     "favorite": chr(0xE6E1),  # videodetails_collec 收藏
-    "share": chr(0xE70F),     # videodetails_share 分享
-    "reply": chr(0xE639),     # pinglun 评论
+    "share": chr(0xE70F),  # videodetails_share 分享
+    "reply": chr(0xE639),  # pinglun 评论
 }
-_LIKE_ICON = chr(0xE6E0)   # 评论点赞小图标
-_LOGO_ICON = chr(0xE725)   # Navbar_logo —— B站 logo 字形（非斜体）
+_LIKE_ICON = chr(0xE6E0)  # 评论点赞小图标
+_LOGO_ICON = chr(0xE725)  # Navbar_logo —— B站 logo 字形（非斜体）
 
 # 单条评论最大显示字数：约 1.3 行（第一行满 + 第二行约 1/3 处即截断），更克制好看
 _COMMENT_MAX_LEN = 38
@@ -94,7 +94,6 @@ def build_template_data(
     online_text: Optional[str] = None,
     comments: Optional[List[dict]] = None,
     summary: Optional[str] = None,
-    show_bvid: bool = True,
     show_post_bar: bool = True,
 ) -> dict:
     """组装 Jinja2 模板渲染数据。
@@ -106,8 +105,13 @@ def build_template_data(
 
     # 顺序严格对应效果图：播放/弹幕/点赞/投币/收藏/分享/评论
     stat_defs = [
-        ("view", "播放"), ("danmaku", "弹幕"), ("like", "点赞"),
-        ("coin", "投币"), ("favorite", "收藏"), ("share", "分享"), ("reply", "评论"),
+        ("view", "播放"),
+        ("danmaku", "弹幕"),
+        ("like", "点赞"),
+        ("coin", "投币"),
+        ("favorite", "收藏"),
+        ("share", "分享"),
+        ("reply", "评论"),
     ]
     stats = [
         {
@@ -120,17 +124,19 @@ def build_template_data(
     ]
 
     comments_fmt = []
-    for c in (comments or []):
+    for c in comments or []:
         msg = (c.get("message") or "").strip()
         if not msg:
             continue
         if len(msg) > _COMMENT_MAX_LEN:
             msg = msg[:_COMMENT_MAX_LEN].rstrip() + "…"
-        comments_fmt.append({
-            "name": c.get("name", ""),
-            "message": msg,
-            "like": format_count(c.get("like")),
-        })
+        comments_fmt.append(
+            {
+                "name": c.get("name", ""),
+                "message": msg,
+                "like": format_count(c.get("like")),
+            }
+        )
 
     return {
         "show_post_bar": show_post_bar,
@@ -144,7 +150,7 @@ def build_template_data(
         "duration_text": format_duration(info.get("duration")),
         "title": info.get("title", ""),
         "pubdate_text": format_date(info.get("pubdate")),
-        "bvid": info.get("bvid", "") if show_bvid else "",
+        "bvid": info.get("bvid", ""),
         "desc": (info.get("desc") or "").strip(),
         "stats": stats,
         "comments": comments_fmt,
