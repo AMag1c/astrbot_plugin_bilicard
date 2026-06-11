@@ -35,7 +35,7 @@ def _is_http_url(s) -> bool:
     "AMag1c",
     "自动识别群聊/私聊中的 B站视频链接、BV号、b23 短链，渲染成精美信息卡片"
     "（封面、UP主、播放/弹幕/点赞等统计、实时在线人数、热门评论、AI视频总结），并附上视频链接。",
-    "0.1.1",
+    "0.2.0",
     "https://github.com/AMag1c/astrbot_plugin_bilicard",
 )
 class BiliCard(Star):
@@ -148,6 +148,67 @@ class BiliCard(Star):
             logger.error(
                 "[BiliCard] 发送失败 bvid=%s: %s", info.get("bvid"), e, exc_info=True
             )
+
+    # ------------------------------------------------------------------ #
+    # LLM 函数工具（AI 对话时执行订阅/登录管理；均仅管理员，函数内自鉴权）
+    # ------------------------------------------------------------------ #
+    @filter.llm_tool(name="subscribe_up")
+    async def llm_subscribe_up(self, event: AstrMessageEvent, uid: str):
+        """订阅一个 B站 UP主，有新投稿时自动推送到当前会话（仅管理员可用）。
+
+        Args:
+            uid(string): UP主的 UID（纯数字，如 486906719）
+        """
+        if not event.is_admin():
+            yield event.plain_result("该操作需要管理员权限。")
+            return
+        uid = self._extract_uid(uid)
+        if not uid:
+            yield event.plain_result("没识别到有效的 UP主 UID。")
+            return
+        async for r in self._do_subscribe(event, uid):
+            yield r
+
+    @filter.llm_tool(name="unsubscribe_up")
+    async def llm_unsubscribe_up(self, event: AstrMessageEvent, uid: str):
+        """取消订阅一个 B站 UP主（仅管理员可用）。
+
+        Args:
+            uid(string): UP主的 UID（纯数字）
+        """
+        if not event.is_admin():
+            yield event.plain_result("该操作需要管理员权限。")
+            return
+        uid = self._extract_uid(uid)
+        if not uid:
+            yield event.plain_result("没识别到有效的 UP主 UID。")
+            return
+        async for r in self._do_unsubscribe(event, uid):
+            yield r
+
+    @filter.llm_tool(name="list_subscribed_up")
+    async def llm_list_subscribed_up(self, event: AstrMessageEvent):
+        """查看当前会话已订阅的 B站 UP主列表（所有人可用，只读查询）。"""
+        async for r in self.sublist_cmd(event):
+            yield r
+
+    @filter.llm_tool(name="bili_login")
+    async def llm_bili_login(self, event: AstrMessageEvent):
+        """发起 B站扫码登录，生成二维码（仅管理员可用）。订阅与 AI 总结功能需要登录。"""
+        if not event.is_admin():
+            yield event.plain_result("该操作需要管理员权限。")
+            return
+        async for r in self.login_cmd(event):
+            yield r
+
+    @filter.llm_tool(name="bili_logout")
+    async def llm_bili_logout(self, event: AstrMessageEvent):
+        """清除已保存的 B站登录信息（仅管理员可用）。"""
+        if not event.is_admin():
+            yield event.plain_result("该操作需要管理员权限。")
+            return
+        async for r in self.logout_cmd(event):
+            yield r
 
     # ------------------------------------------------------------------ #
     # 内部逻辑
@@ -311,6 +372,11 @@ class BiliCard(Star):
         if not uid:
             yield event.plain_result("用法：/订阅UP UP主UID（例如 /订阅UP 486906719）")
             return
+        async for r in self._do_subscribe(event, uid):
+            yield r
+
+    async def _do_subscribe(self, event: AstrMessageEvent, uid: str):
+        """订阅 UP主核心逻辑（/订阅UP 指令与 LLM 工具共用）。"""
         info = await self.client.get_up_info(uid)
         # 以当前最新视频为基线，避免订阅瞬间把已有视频当作"新投稿"推送
         latest = await self.client.get_latest_videos(uid, 1)
@@ -344,13 +410,17 @@ class BiliCard(Star):
         if not uid:
             yield event.plain_result("用法：/取消订阅UP UP主UID")
             return
+        async for r in self._do_unsubscribe(event, uid):
+            yield r
+
+    async def _do_unsubscribe(self, event: AstrMessageEvent, uid: str):
+        """取消订阅核心逻辑（/取消订阅UP 指令与 LLM 工具共用）。"""
         ok = self.store.remove(event.unified_msg_origin, uid)
         yield event.plain_result("✅ 已取消订阅" if ok else "未找到该订阅")
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("订阅UP列表")
     async def sublist_cmd(self, event: AstrMessageEvent):
-        """/订阅UP列表 —— 查看本会话订阅。"""
+        """/订阅UP列表 —— 查看本会话订阅（所有人可用，只读）。"""
         subs = self.store.list(event.unified_msg_origin)
         if not subs:
             yield event.plain_result("当前没有订阅。用 /订阅UP UID 添加。")
