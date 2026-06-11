@@ -90,6 +90,7 @@ B站视频解析卡片插件 for [AstrBot](https://github.com/AstrBotDevs/AstrBo
 | `summary_max_subtitle` | 字幕送入 LLM 的最大字符数 | 4000 |
 | `summary_max_chars` | AI 总结字数上限（卡片一行约 27 字；填 0 不限制） | 120 |
 | `show_link` | 图片后附带视频链接 | true |
+| `render_timeout` | 在线出图渲染超时（秒），超时放弃不发卡片；t2i 慢可调大 | 50 |
 | `bilibili_cookie` | 手填 SESSDATA / bili_jct | 空 |
 | `access_mode` | 会话访问控制：all / blacklist / whitelist | all |
 | `session_list` | 会话白/黑名单（UMO 列表，后台可逐条添加；兼容纯群号） | 空 |

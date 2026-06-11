@@ -18,6 +18,7 @@ DEFAULTS: dict = {
     "summary_max_subtitle": 4000,
     "summary_max_chars": 120,
     "show_link": True,
+    "render_timeout": 50,  # 在线 html_render 出图超时（秒）；超时放弃不发卡片
     "access_mode": "all",
     "cooldown_seconds": 60,
     "enable_subscribe_push": True,

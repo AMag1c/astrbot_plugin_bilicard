@@ -2,7 +2,7 @@ name: astrbot_plugin_bilicard
 display_name: BiliCard - B站视频解析卡片
 desc: 自动识别群聊/私聊中的 B站视频链接、BV号、b23 短链，渲染成精美信息卡片（封面、UP主、播放/弹幕/点赞等统计、实时在线人数、热门评论、AI视频总结），并附上视频链接。
 short_desc: 群里发 B站视频自动出精美信息卡片，并支持订阅 UP主新投稿推送。
-version: v0.2.0
+version: v0.2.1
 author: AMag1c
 repo: https://github.com/AMag1c/astrbot_plugin_bilicard
 # 主要适配 QQ(aiocqhttp)：小程序卡片解析为其特有；链接/BV 解析、订阅推送在其它平台同样可用

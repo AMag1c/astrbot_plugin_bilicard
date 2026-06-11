@@ -35,7 +35,7 @@ def _is_http_url(s) -> bool:
     "AMag1c",
     "自动识别群聊/私聊中的 B站视频链接、BV号、b23 短链，渲染成精美信息卡片"
     "（封面、UP主、播放/弹幕/点赞等统计、实时在线人数、热门评论、AI视频总结），并附上视频链接。",
-    "0.2.0",
+    "v0.2.1",
     "https://github.com/AMag1c/astrbot_plugin_bilicard",
 )
 class BiliCard(Star):
@@ -115,6 +115,11 @@ class BiliCard(Star):
         # 阻止这条消息继续触发 LLM 闲聊
         event.stop_event()
 
+        logger.info(
+            "[BiliCard] 识别到视频 %s「%s」，开始处理",
+            info["bvid"],
+            info.get("title", ""),
+        )
         try:
             summary = None
             if self._c("enable_ai_summary", True):
@@ -122,20 +127,26 @@ class BiliCard(Star):
             img_url = await self._render_card(
                 info, summary=summary, show_post_bar=False
             )
-        except Exception as e:  # noqa: BLE001
-            logger.error(
-                "[BiliCard] 渲染失败 bvid=%s: %s", info.get("bvid"), e, exc_info=True
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[BiliCard] 渲染超时（>%ss），跳过 bvid=%s（远程 t2i 服务慢/过载）",
+                self.cfg.int("render_timeout"),
+                info.get("bvid"),
             )
+            return
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[BiliCard] 渲染失败，跳过 bvid=%s：%s", info.get("bvid"), e)
             return
 
         if not _is_http_url(img_url):
-            logger.error(
-                "[BiliCard] 渲染图片 URL 无效，跳过: bvid=%s url=%r",
+            logger.warning(
+                "[BiliCard] 渲染图片 URL 无效，跳过 bvid=%s：url=%r",
                 info.get("bvid"),
                 img_url,
             )
             return
 
+        logger.info("[BiliCard] 卡片渲染成功 bvid=%s，准备发送", info["bvid"])
         try:
             # 图片 + 链接合并为一条消息，避免多次 yield 被其他插件中断传播
             chain = [Comp.Image.fromURL(img_url)]
@@ -144,6 +155,7 @@ class BiliCard(Star):
                     Comp.Plain(f"\nhttps://www.bilibili.com/video/{info['bvid']}")
                 )
             yield event.chain_result(chain)
+            logger.info("[BiliCard] 已发送视频卡片 bvid=%s", info["bvid"])
         except Exception as e:  # noqa: BLE001
             logger.error(
                 "[BiliCard] 发送失败 bvid=%s: %s", info.get("bvid"), e, exc_info=True
@@ -276,6 +288,7 @@ class BiliCard(Star):
         - 链接总结：show_post_bar=False，summary 有值
         - 订阅推送：show_post_bar=True，summary=None
         """
+        logger.info("[BiliCard] 开始渲染卡片 bvid=%s", info.get("bvid", ""))
         online_text = await self._build_online(info)
 
         comments = []
@@ -299,7 +312,11 @@ class BiliCard(Star):
         )
         # PNG 无损 + 设备像素缩放，尽量保证清晰度
         options = {"type": "png", "full_page": True, "scale": "device"}
-        url = await self.html_render(self._tmpl, data, options=options)
+        # 限定在线渲染总耗时上限（可配 render_timeout，默认 50s），避免远程 t2i 504/挂起拖住消息处理
+        url = await asyncio.wait_for(
+            self.html_render(self._tmpl, data, options=options),
+            timeout=self.cfg.int("render_timeout"),
+        )
         # t2i 返回的 URL 可能带前后空格（如 t2i_endpoint 配置粘贴时多了空格），去掉以防 fromURL 误判
         return url.strip() if isinstance(url, str) else url
 
@@ -315,6 +332,7 @@ class BiliCard(Star):
             info["bvid"], info["cid"], int(self._c("summary_max_subtitle", 4000))
         )
         if not text:
+            logger.info("[BiliCard] 视频无字幕，跳过 AI 总结 bvid=%s", info["bvid"])
             return None
 
         provider_id = self._c("llm_provider_id", "")
@@ -326,16 +344,20 @@ class BiliCard(Star):
             logger.warning("[BiliCard] 未找到可用 LLM Provider，跳过 AI 总结")
             return None
 
+        logger.info("[BiliCard] 提取字幕成功，调用 LLM 生成总结 bvid=%s", info["bvid"])
+
         async def llm_ask(prompt: str) -> str:
             resp = await provider.text_chat(prompt=prompt, session_id="bilicard")
             return getattr(resp, "completion_text", "") or ""
 
-        return await summarizer.summarize(
+        result = await summarizer.summarize(
             info["title"],
             text,
             llm_ask,
             max_chars=int(self._c("summary_max_chars", 120)),
         )
+        logger.info("[BiliCard] AI 总结完成 bvid=%s", info["bvid"])
+        return result
 
     def _session_allowed(self, event: AstrMessageEvent) -> bool:
         """基于 UMO（unified_msg_origin）的会话访问控制，兼容纯群号。"""
@@ -540,12 +562,19 @@ class BiliCard(Star):
             return
         try:
             img_url = await self._render_card(info, summary=None, show_post_bar=True)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[BiliCard] 推送渲染超时（>%ss），跳过 bvid=%s",
+                self.cfg.int("render_timeout"),
+                bvid,
+            )
+            return
         except Exception as e:  # noqa: BLE001
-            logger.error("[BiliCard] 推送渲染失败 bvid=%s: %s", bvid, e, exc_info=True)
+            logger.warning("[BiliCard] 推送渲染失败，跳过 bvid=%s：%s", bvid, e)
             return
         if not _is_http_url(img_url):
-            logger.error(
-                "[BiliCard] 推送图片 URL 无效，跳过: bvid=%s url=%r", bvid, img_url
+            logger.warning(
+                "[BiliCard] 推送图片 URL 无效，跳过 bvid=%s：url=%r", bvid, img_url
             )
             return
         try:

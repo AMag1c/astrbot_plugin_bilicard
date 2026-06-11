@@ -55,6 +55,13 @@
     "default": true,
     "hint": "在卡片图片之后追加一条视频跳转链接文本"
   },
+  "render_timeout": {
+    "description": "在线出图渲染超时（秒）",
+    "type": "int",
+    "default": 50,
+    "slider": {"min": 10, "max": 120, "step": 5},
+    "hint": "在线 html_render 出图（B站卡片）的最长等待秒数，超时即放弃、不发卡片（仅记日志）。远程 t2i 服务繁忙时可适当调大。"
+  },
   "bilibili_cookie": {
     "description": "B站 Cookie（AI总结字幕需要）",
     "type": "object",
