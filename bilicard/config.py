@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 # 顶层标量默认值（与 _conf_schema.json 对齐；list/dict 型默认见各自调用处）
 DEFAULTS: dict = {
-    "trigger_mode": "all",
     "enable_comments": True,
     "comment_count": 3,
     "enable_ai_summary": True,
@@ -23,6 +22,26 @@ DEFAULTS: dict = {
     "cooldown_seconds": 60,
     "enable_subscribe_push": True,
     "check_interval_minutes": 10,
+}
+
+# object 型配置分组的默认值（同样必须与 _conf_schema.json 对齐）。
+# 两个平台各一组，互不影响：B站视频动辄上百 MB 且要选画质，抖音则短小、只有一档。
+GROUP_DEFAULTS: dict = {
+    "bili_video": {
+        "enabled": False,  # 自动解析出卡片后，跟着下载并发送视频
+        "on_subscribe_push": False,  # 订阅推送新投稿时也发视频
+        "quality": "720P",
+        "max_size_mb": 100,
+        "timeout": 300,  # 下载 + ffmpeg 合并总超时（秒）
+        "send_mode": "video",  # video=视频消息（可直接播放）/ file=群文件
+    },
+    "douyin_video": {
+        "enabled": False,
+        "quality": "720P",  # 抖音默认档；可选见 QUALITY_RATIO
+        "max_size_mb": 100,
+        "timeout": 180,  # 抖音视频短，超时比 B站小
+        "send_mode": "video",
+    },
 }
 
 
@@ -47,6 +66,19 @@ class Config:
 
     def bool(self, key: str) -> bool:
         return bool(self.get(key))
+
+    def group(self, name: str) -> dict:
+        """取 object 型配置分组（如 bili_video / douyin_video）。
+
+        缺失或留空的子项用 :data:`GROUP_DEFAULTS` 补齐，调用处拿到的永远是完整
+        字典，不必再写字面默认值。
+        """
+        base = dict(GROUP_DEFAULTS.get(name, {}))
+        raw = self.raw.get(name)
+        if isinstance(raw, dict):
+            # 空字符串视为"未填"，回退默认；False / 0 是有效值必须保留
+            base.update({k: v for k, v in raw.items() if v is not None and v != ""})
+        return base
 
     def save(self) -> None:
         save = getattr(self.raw, "save_config", None)

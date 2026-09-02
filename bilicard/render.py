@@ -34,10 +34,30 @@ _LOGO_ICON = chr(0xE725)  # Navbar_logo —— B站 logo 字形（非斜体）
 _COMMENT_MAX_LEN = 38
 
 
+_DOUYIN_TMPL_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "templates", "douyin_card.html"
+)
+
+
 def load_template() -> str:
     """读取 HTML 模板字符串。"""
     with open(_TMPL_PATH, encoding="utf-8") as f:
         return f.read()
+
+
+def load_douyin_template() -> str:
+    """读取抖音卡片模板（封面 + 时长 + 点赞的极简版）。"""
+    with open(_DOUYIN_TMPL_PATH, encoding="utf-8") as f:
+        return f.read()
+
+
+def build_douyin_data(info: dict) -> dict:
+    """组装抖音卡片模板数据。封面需在外部转好 data URI 再塞进 info。"""
+    return {
+        "cover": info.get("cover", ""),
+        "duration": format_duration(info.get("duration", 0)),
+        "like": format_count(info.get("like", 0)),
+    }
 
 
 def load_vanfont_b64() -> str:

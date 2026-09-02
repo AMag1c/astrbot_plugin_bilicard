@@ -9,10 +9,107 @@ import sys
 import time
 import types
 
-# wbi 在 import 时引入 aiohttp；本测不发真实请求，stub 掉即可
-sys.modules.setdefault("aiohttp", types.ModuleType("aiohttp"))
+# 各模块 import 时引入 aiohttp；本测不发真实请求，stub 掉即可
+if "aiohttp" not in sys.modules:
+    _stub = types.ModuleType("aiohttp")
+    _stub.ClientTimeout = lambda **kw: kw
+    _stub.ClientSession = object
+    sys.modules["aiohttp"] = _stub
 
 from bilicard import parser, render, summarizer, wbi  # noqa: E402
+from bilicard.config import Config  # noqa: E402
+
+
+def test_config_group():
+    """两个平台的视频配置各成一组、互不影响，缺项回退默认。"""
+    cfg = Config(
+        {
+            "bili_video": {"enabled": True, "max_size_mb": 30, "quality": ""},
+            "douyin_video": {"enabled": False, "timeout": 0},
+        }
+    )
+    b = cfg.group("bili_video")
+    assert b["enabled"] is True
+    assert b["max_size_mb"] == 30
+    assert b["quality"] == "720P"  # 留空回退默认，不会变成空串
+    assert b["send_mode"] == "video"  # 没配的项也补齐
+    assert b["on_subscribe_push"] is False
+
+    d = cfg.group("douyin_video")
+    assert d["enabled"] is False  # False 是有效值，不能被默认值覆盖
+    assert d["timeout"] == 0  # 0 同理
+    assert d["max_size_mb"] == 100
+    assert d["quality"] == "720P"
+    assert "on_subscribe_push" not in d  # 抖音没有订阅推送，不该混入 B站的键
+
+    # 整组缺失 / 类型不对 / 未知分组
+    assert Config({}).group("bili_video")["max_size_mb"] == 100
+    assert Config({"bili_video": "坏数据"}).group("bili_video")["enabled"] is False
+    assert Config({}).group("不存在") == {}
+    print("✓ config.group（分平台独立/留空回退/False与0保留/坏数据不崩）")
+
+
+def test_send_timeout_detect():
+    """协议端超时 ≠ 失败：误判会让同一个视频重发一次，群里出现两条。"""
+    from bilicard.downloader import is_send_timeout as f
+
+    class ActionFailed(Exception):
+        def __init__(self, retcode):
+            self.retcode = retcode
+
+    assert f(ActionFailed(1200)) is True
+    assert f(Exception("Timeout: NTEvent sendMsg ...")) is True
+    assert f(Exception("ENOENT: no such file")) is False
+    assert f(ActionFailed(1404)) is False
+    print("✓ is_send_timeout（超时不重发 / 真失败才回退直链）")
+
+
+def test_normalize_video():
+    """view 接口与 bilibili-api 库返回同构数据，共用一套映射。"""
+    from bilicard.client import BiliClient
+
+    raw = {
+        "bvid": "BV1x",
+        "aid": 9,
+        "cid": 7,
+        "title": "标题",
+        "pic": "https://cover",
+        "desc": "简介",
+        "duration": 90,
+        "pubdate": 1700000000,
+        "owner": {"name": "UP", "mid": 5, "face": "https://face"},
+        "stat": {
+            "view": 1,
+            "danmaku": 2,
+            "like": 3,
+            "coin": 4,
+            "favorite": 5,
+            "share": 6,
+            "reply": 7,
+        },
+    }
+    info = BiliClient._normalize_video(raw)
+    assert info["bvid"] == "BV1x" and info["cid"] == 7
+    assert info["cover"] == "https://cover"  # pic → cover
+    assert info["owner"]["name"] == "UP" and info["stat"]["reply"] == 7
+    # 字段缺失也不能抛（库返回的结构偶有出入）
+    bare = BiliClient._normalize_video({})
+    assert bare["bvid"] == "" and bare["stat"]["view"] == 0
+    print("✓ client._normalize_video（字段映射 / 缺字段不抛）")
+
+
+def test_buvid_cookie():
+    """B站风控：view 接口不带 buvid 会 412，故设备标识要写进 Cookie 头。"""
+    from bilicard.client import BiliClient
+
+    c = BiliClient({"SESSDATA": "s"})
+    c.cookies["buvid3"] = "AAA-BBB79044infoc"  # 接口返回值自带 infoc 后缀
+    c.cookies["buvid4"] = "CCC-DDD=="
+    cookie = c._headers()["Cookie"]
+    assert "buvid3=AAA-BBB79044infoc" in cookie
+    assert "buvid4=CCC-DDD==" in cookie
+    assert "SESSDATA=s" in cookie
+    print("✓ client._headers（buvid3/buvid4 随 Cookie 一并发出）")
 
 
 def test_parser():
@@ -124,6 +221,10 @@ def test_wbi():
 
 
 if __name__ == "__main__":
+    test_config_group()
+    test_buvid_cookie()
+    test_send_timeout_detect()
+    test_normalize_video()
     test_parser()
     test_render_format()
     test_render_build()

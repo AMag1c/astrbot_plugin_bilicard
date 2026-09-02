@@ -1,16 +1,9 @@
 {
-  "trigger_mode": {
-    "description": "触发范围",
-    "type": "string",
-    "default": "all",
-    "options": ["all", "group_only", "private_only"],
-    "hint": "all=群聊和私聊都响应 / group_only=仅群聊 / private_only=仅私聊"
-  },
   "enable_comments": {
     "description": "显示热门评论",
     "type": "bool",
     "default": true,
-    "hint": "在卡片中显示热门评论（匿名即可获取，无需登录）"
+    "hint": "在 B站卡片中显示热门评论（匿名即可获取，无需登录）"
   },
   "comment_count": {
     "description": "热门评论数量",
@@ -24,7 +17,7 @@
     "description": "启用 AI 视频总结",
     "type": "bool",
     "default": true,
-    "hint": "提取视频字幕并用 LLM 生成总结。需配置下方 LLM 与 B站Cookie，且视频本身要有字幕"
+    "hint": "提取 B站视频字幕并用 LLM 生成总结。需配置下方 LLM 与 B站Cookie，且视频本身要有字幕"
   },
   "llm_provider_id": {
     "description": "AI 总结使用的模型",
@@ -53,14 +46,14 @@
     "description": "图片后附带视频链接",
     "type": "bool",
     "default": true,
-    "hint": "在卡片图片之后追加一条视频跳转链接文本"
+    "hint": "在卡片图片之后追加一条视频跳转链接文本。注意：出图失败降级为文字时，链接一定会发出去，不受此项影响。"
   },
   "render_timeout": {
     "description": "在线出图渲染超时（秒）",
     "type": "int",
     "default": 50,
     "slider": {"min": 10, "max": 120, "step": 5},
-    "hint": "在线 html_render 出图（B站卡片）的最长等待秒数，超时即放弃、不发卡片（仅记日志）。远程 t2i 服务繁忙时可适当调大。"
+    "hint": "在线 html_render 出图的最长等待秒数（B站与抖音卡片共用）。超时则降级为「标题 + 链接」的文字消息，不会什么都不发。远程 t2i 服务繁忙时可适当调大。"
   },
   "bilibili_cookie": {
     "description": "B站 Cookie（AI总结字幕需要）",
@@ -77,6 +70,12 @@
         "type": "string",
         "default": "",
         "hint": "登录 B站后从浏览器 Cookie 中复制 bili_jct 的值"
+      },
+      "ac_time_value": {
+        "description": "ac_time_value（refresh_token，自动续期用，可选）",
+        "type": "string",
+        "default": "",
+        "hint": "填了就能让登录态自动续期、免反复手填。它不在 Cookie 里，需从浏览器 localStorage 取：F12 → Application/应用 → Local Storage/本地存储 → https://www.bilibili.com → 键 ac_time_value 的值。用 /B站登录 扫码则会自动获取，无需手填。"
       }
     }
   },
@@ -100,7 +99,7 @@
     "default": 60,
     "min": 0,
     "max": 3600,
-    "hint": "同一视频在该时间内重复出现则不再解析，防止刷屏。0 表示不限制"
+    "hint": "同一视频在该时间内重复出现则不再解析，防止刷屏（B站与抖音各自独立计冷却）。0 表示不限制"
   },
   "enable_subscribe_push": {
     "description": "启用订阅推送",
@@ -123,5 +122,91 @@
     "editor_mode": true,
     "editor_language": "json",
     "hint": "通常用 /订阅UP UID 指令自动维护，也可在此直接编辑（改完需重载插件生效）。上方为格式示例：键是会话标识（用 /sid 指令获取，形如 aiocqhttp:GroupMessage:群号），值是该会话订阅的 UP主列表（mid=UP主UID，name=备注，last_bvid 留空即可）。mid 为 0 的示例项会被自动忽略，请替换为真实 UID 或删除。"
+  },
+  "bili_video": {
+    "description": "📺 B站 · 视频下载发送",
+    "type": "object",
+    "items": {
+      "enabled": {
+        "description": "自动下载并发送视频",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后，群里发 B站视频出卡片时会跟着下载视频并发到会话。⚠ 占带宽和上传时间，群里链接一多容易刷屏。建议先用 /下载视频 指令试跑确认协议端能收，再打开。关闭后指令仍可用。"
+      },
+      "on_subscribe_push": {
+        "description": "订阅推送时也发视频",
+        "type": "bool",
+        "default": false,
+        "hint": "订阅的 UP主有新投稿时，推完卡片再发一个视频。定时推送无人值守，开启前请确认带宽与体积上限合适。"
+      },
+      "quality": {
+        "description": "画质上限",
+        "type": "string",
+        "default": "720P",
+        "options": ["360P", "480P", "720P", "1080P", "4K"],
+        "hint": "实际取「不超过此档且体积不超上限」的最高档，超限自动降档。1080P 及以上需登录 B站，4K/大会员画质还需对应权限；环境没有 ffmpeg 时只能走单文件流，最高约 720P。"
+      },
+      "max_size_mb": {
+        "description": "体积上限（MB）",
+        "type": "int",
+        "default": 100,
+        "slider": {"min": 10, "max": 1000, "step": 10},
+        "hint": "下载前按码率×时长预估拦截，下载中按实际字节兜底，超限即放弃（长视频会直接跳过）。同时受协议端与 QQ 限制，建议不超过 500。"
+      },
+      "timeout": {
+        "description": "下载超时（秒）",
+        "type": "int",
+        "default": 300,
+        "slider": {"min": 60, "max": 1800, "step": 30},
+        "hint": "下载加 ffmpeg 合并的总耗时上限，超时放弃并清理临时文件。"
+      },
+      "send_mode": {
+        "description": "发送形式",
+        "type": "string",
+        "default": "video",
+        "options": ["video", "file"],
+        "hint": "video=视频消息（群里可直接点开播放）/ file=文件上传（QQ 群文件，可下载保存，体积限制通常更宽松）。两种方式都会在协议端读不到本地文件时自动改用 HTTP 直链重试（需配置 AstrBot 的 callback_api_base）。"
+      }
+    }
+  },
+  "douyin_video": {
+    "description": "🎵 抖音 · 视频下载发送",
+    "type": "object",
+    "items": {
+      "enabled": {
+        "description": "自动下载并发送视频",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后，群里发抖音口令/链接出卡片时会跟着下载无水印原片并发到会话。抖音解析本身默认开启、无需配置；此项只管要不要连视频一起发。图集（多图）作品不下载。"
+      },
+      "quality": {
+        "description": "画质",
+        "type": "string",
+        "default": "720P",
+        "options": ["1080P", "720P", "540P"],
+        "hint": "通过改写播放地址的 ratio 参数切换。720P 是抖音的默认档；540P 更省流量（实测同一视频 720p=69MB、540p=60MB）；1080P 体积明显更大（同片 92MB）。只提供这三档是实测结论：抖音对 480p/360p 不认，且不是退回默认而是返回更大的文件，留着反而适得其反。"
+      },
+      "max_size_mb": {
+        "description": "体积上限（MB）",
+        "type": "int",
+        "default": 100,
+        "slider": {"min": 10, "max": 1000, "step": 10},
+        "hint": "抖音视频通常只有几 MB 到几十 MB，默认 100 足够。下载中按实际字节校验，超限即放弃。"
+      },
+      "timeout": {
+        "description": "下载超时（秒）",
+        "type": "int",
+        "default": 180,
+        "slider": {"min": 30, "max": 600, "step": 30},
+        "hint": "抖音视频短、下载快，超时可比 B站设得小。超时放弃并清理临时文件。"
+      },
+      "send_mode": {
+        "description": "发送形式",
+        "type": "string",
+        "default": "video",
+        "options": ["video", "file"],
+        "hint": "video=视频消息（群里可直接点开播放）/ file=文件上传（QQ 群文件）。与 B站互不影响，可各自设置。"
+      }
+    }
   }
 }

@@ -43,7 +43,9 @@ async def generate_qrcode() -> Optional[Tuple[str, str]]:
 async def poll_qrcode(qrcode_key: str) -> Tuple[int, Optional[dict]]:
     """轮询扫码状态。
 
-    返回 (code, cookies)。code==0 时 cookies 为 {SESSDATA, bili_jct, DedeUserID}。
+    返回 (code, cookies)。code==0 时 cookies 为
+    {SESSDATA, bili_jct, DedeUserID, refresh_token}。其中 refresh_token 用于后续
+    自动续期（即 bilibili-api 的 ac_time_value，不是 Cookie，需单独保存）。
     """
     try:
         async with aiohttp.ClientSession() as s:
@@ -59,6 +61,7 @@ async def poll_qrcode(qrcode_key: str) -> Tuple[int, Optional[dict]]:
                 "SESSDATA": q.get("SESSDATA", [""])[0],
                 "bili_jct": q.get("bili_jct", [""])[0],
                 "DedeUserID": q.get("DedeUserID", [""])[0],
+                "refresh_token": data.get("refresh_token", ""),
             }
             return CODE_SUCCESS, cookies
         return code, None

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=760">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: #ebedf0; }
+  body {
+    zoom: 2;                 /* 2 倍渲染，提升清晰度 */
+    padding: 12px; background: #ebedf0;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: #18191c;
+  }
+
+  /* 卡片：与 B站卡片同样的圆角与投影，风格统一 */
+  .card {
+    width: 100%; background: #fff; overflow: hidden;
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.10);
+  }
+
+  /* 封面为主体；抖音多为竖屏，限制最大高度避免出图过长 */
+  .cover-wrap {
+    position: relative; width: 100%; line-height: 0;
+    background: #d8dde3;
+  }
+  .cover-wrap img {
+    width: 100%; display: block;
+    max-height: 640px; object-fit: cover; object-position: center top;
+  }
+  /* 封面底部压一层渐变，保证浅色封面上的文字也看得清 */
+  .scrim {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 96px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,.62) 100%);
+  }
+
+  /* 平台标：右上角 */
+  .brand {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(0,0,0,.55); color: #fff;
+    font-size: 15px; font-weight: 600; letter-spacing: .5px;
+    padding: 4px 10px; border-radius: 6px; line-height: 1.4;
+  }
+
+  /* 信息条：左时长、右点赞 */
+  .meta {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px;
+    color: #fff; line-height: 1;
+  }
+  .meta .item { display: flex; align-items: center; gap: 7px; }
+  .meta .glyph { font-size: 20px; line-height: 1; }
+  .meta .value {
+    font-size: 21px; font-weight: 700;
+    text-shadow: 0 1px 3px rgba(0,0,0,.45);
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="cover-wrap">
+      {% if cover %}<img src="{{ cover }}" alt="">{% endif %}
+      <div class="scrim"></div>
+      <div class="brand">抖音</div>
+      <div class="meta">
+        <div class="item">
+          <span class="glyph">⏱</span>
+          <span class="value">{{ duration }}</span>
+        </div>
+        <div class="item">
+          <span class="glyph">❤</span>
+          <span class="value">{{ like }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
